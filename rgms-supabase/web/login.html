@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>เข้าสู่ระบบ — RGMS ทุนวิจัย มฟล.</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { background: var(--color-bg); min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .lg { width: min(420px, 100%); }
+  .lg__brand { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .lg__mark { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: #851419; color: #fff; font: 700 15px/1 var(--font-head); box-shadow: 0 0 0 2px rgba(197,155,39,.8); }
+  .lg__err { display: none; margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: #FEF3F2; border: 1px solid #FDA29B; color: #B42318; font-size: 14px; }
+  .lg__err.is-on { display: block; }
+  .lg__note { margin-top: 16px; font-size: 12px; color: var(--color-text-subtle); line-height: 1.6; }
+</style>
+</head>
+<body>
+<main class="lg">
+  <div class="lg__brand">
+    <span class="lg__mark" aria-hidden="true">MFU</span>
+    <div><div style="font-weight:600;">ระบบบริหารจัดการทุนวิจัย</div><div class="text-sm text-muted">มหาวิทยาลัยแม่ฟ้าหลวง</div></div>
+  </div>
+  <form class="card stack gap-3" id="f" novalidate>
+    <h1 class="text-subhead" style="margin:0;">เข้าสู่ระบบ</h1>
+    <div class="lg__err" id="err" role="alert"></div>
+    <div class="field" style="margin:0;"><label class="field__label" for="email">อีเมล</label>
+      <input class="field__control" id="email" type="email" autocomplete="username" required></div>
+    <div class="field" style="margin:0;"><label class="field__label" for="pw">รหัสผ่าน</label>
+      <input class="field__control" id="pw" type="password" autocomplete="current-password" required></div>
+    <button class="btn btn-primary btn-lg btn-block" id="go" type="submit">เข้าสู่ระบบ</button>
+  </form>
+  <p class="lg__note">บัญชีผู้ใช้และบทบาทกำหนดโดยผู้ดูแลระบบ หากเข้าสู่ระบบไม่ได้ให้ติดต่อเจ้าหน้าที่ส่วนบริหารงานวิจัย</p>
+</main>
+<script>
+(function () {
+  var HOME = { researcher: "researcher-home.html", chair: "chair-review.html", secretary: "secretary-home.html", staff: "staff-queue.html", reviewer: "reviewer-list.html", finance: "finance-review-queue.html", exec: "exec-overview.html" };
+  var MSGS = { expired: "หมดเวลาการใช้งาน กรุณาเข้าสู่ระบบอีกครั้ง", "no-profile": "บัญชีนี้ยังไม่ได้กำหนดบทบาทหรือถูกระงับ ติดต่อผู้ดูแลระบบ", offline: "เชื่อมต่อฐานข้อมูลไม่ได้ ลองใหม่อีกครั้ง" };
+  var q = new URLSearchParams(location.search), CFG = null, SKEY = "sb_session";
+  var err = document.getElementById("err"), go = document.getElementById("go");
+  function show(t) { err.textContent = t; err.classList.add("is-on"); }
+  function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
+  if (q.get("msg") && MSGS[q.get("msg")]) show(MSGS[q.get("msg")]);
+
+  try { var x = new XMLHttpRequest(); x.open("GET", "supabase-config.json", false); x.send(); if (x.status === 200) CFG = jp(x.responseText); } catch (e) {}
+  if (!CFG || !CFG.url || !CFG.anonKey || /YOUR-/.test(CFG.url + CFG.anonKey)) { show("ยังไม่ได้ตั้งค่า supabase-config.json (ดูคู่มือ README)"); go.disabled = true; return; }
+  var BASE = String(CFG.url).replace(/\/+$/, "");
+  function H(tok) { return { apikey: CFG.anonKey, Authorization: "Bearer " + (tok || CFG.anonKey), "Content-Type": "application/json" }; }
+  function nextUrl(role) { var n = q.get("next") || ""; return /^[a-z0-9_-]+\.html(\?[A-Za-z0-9_=&%.-]*)?$/i.test(n) && n !== "login.html" ? n : (HOME[role] || "index.html"); }
+
+  document.getElementById("f").addEventListener("submit", function (e) {
+    e.preventDefault(); err.classList.remove("is-on");
+    var email = document.getElementById("email").value.trim(), pw = document.getElementById("pw").value;
+    if (!email || !pw) { show("กรอกอีเมลและรหัสผ่าน"); return; }
+    go.disabled = true; go.textContent = "กำลังเข้าสู่ระบบ…";
+    fetch(BASE + "/auth/v1/token?grant_type=password", { method: "POST", headers: H(), body: JSON.stringify({ email: email, password: pw }) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.j.access_token) { throw new Error(res.j && (res.j.error_code === "invalid_credentials" || res.j.error === "invalid_grant" || res.j.msg) ? "อีเมลหรือรหัสผ่านไม่ถูกต้อง" : "เข้าสู่ระบบไม่สำเร็จ"); }
+        var j = res.j, s = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at || (Math.floor(Date.now() / 1000) + (j.expires_in || 3600)), user: { id: j.user.id, email: j.user.email } };
+        return fetch(BASE + "/rest/v1/profiles?id=eq." + encodeURIComponent(s.user.id) + "&select=role,active", { headers: H(s.access_token) })
+          .then(function (r) { return r.json(); })
+          .then(function (rows) {
+            var p = rows && rows[0];
+            if (!p || !p.active) throw new Error(MSGS["no-profile"]);
+            localStorage.setItem(SKEY, JSON.stringify(s));
+            location.replace(nextUrl(p.role));
+          });
+      })
+      .catch(function (e) { show(e && e.message && !/fetch|network/i.test(e.message) ? e.message : MSGS.offline); go.disabled = false; go.textContent = "เข้าสู่ระบบ"; });
+  });
+
+  // มี session ที่ยังไม่หมดอายุอยู่แล้ว → ข้ามไปหน้าตามบทบาท
+  var s0 = jp(localStorage.getItem(SKEY));
+  if (s0 && s0.access_token && s0.expires_at > Date.now() / 1000 + 30 && !q.get("msg")) {
+    fetch(BASE + "/rest/v1/profiles?id=eq." + encodeURIComponent(s0.user.id) + "&select=role,active", { headers: H(s0.access_token) })
+      .then(function (r) { return r.ok ? r.json() : []; }).then(function (rows) { if (rows[0] && rows[0].active) location.replace(nextUrl(rows[0].role)); }).catch(function () {});
+  }
+})();
+</script>
+</body>
+</html>

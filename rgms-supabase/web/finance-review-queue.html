@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>คิวตรวจการเงิน — RGMS ทุนวิจัย มฟล.</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* จุดสถานะ: เขียว = ตรวจแล้ว / เหลือง = รอตรวจ + กระพริบ */
+  .status-badge::before { animation: status-blink 1.2s ease-in-out infinite; }
+  .status-badge--done::before { background: #10B981; box-shadow: 0 0 8px 2px rgba(16, 185, 129, .65); }
+  .status-badge--wait::before { background: #F5B301; box-shadow: 0 0 8px 2px rgba(245, 179, 1, .75); }
+  @keyframes status-blink {
+    0%, 100% { opacity: 1;   transform: scale(1.1); }
+    50%      { opacity: .25; transform: scale(.8); }
+  }
+  @media (prefers-reduced-motion: reduce) { .status-badge::before { animation: none; } }
+
+  /* นำขอบสีแดงเข้มตอนชี้เมาส์ที่ปุ่มออก */
+  .btn-secondary:hover { border-color: #CBD5E1 !important; color: var(--color-primary-strong) !important; }
+  .btn-primary:hover   { border-color: #680E12 !important; }
+
+  .page-head { margin-bottom: 0; }
+
+  /* PROTOTYPE: ปุ่มรีเซ็ตวงกลม (ลูกศรตามเข็มนาฬิกา) มุมล่างขวา */
+  .reset-fab {
+    position: fixed; right: 24px; bottom: 24px; z-index: 40;
+    width: 52px; height: 52px; border-radius: 50%; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, #96181F 0%, #851419 100%);
+    border: 1px solid #680E12; color: #fff; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(133, 20, 25, .35);
+    transition: transform .2s, box-shadow .2s;
+  }
+  .reset-fab:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(133, 20, 25, .4); color: #fff; }
+  .reset-fab svg { width: 24px; height: 24px; transition: transform .5s; }
+  .reset-fab:hover svg, .reset-fab.is-spinning svg { transform: rotate(360deg); }
+</style>
+</head>
+<body>
+<div id="app-nav-root"></div>
+<main class="section">
+  <div class="container stack gap-5">
+
+    <!-- หัวข้อ + กล่องกติกา (ชิดกัน) -->
+    <div class="stack gap-3">
+      <div class="page-head">
+        <span class="text-overline">แทร็กการเงิน · claim-based (FR-83)</span>
+        <h1 class="text-headline">คิวตรวจการเงิน</h1>
+      </div>
+
+      <div class="notice notice--info">
+        <span class="notice__title">กติกาการรับตรวจ</span>
+        <span class="notice__body">ใครกด "รับตรวจ" โครงการไหนก่อน จะผูกเป็นผู้รับผิดชอบแทร็กการเงินของโครงการนั้นต่อเนื่องทุกรอบ (รวมรอบตรวจซ้ำหลังแก้ไข) — ไม่สุ่มมอบหมายใหม่ทุกครั้ง</span>
+      </div>
+    </div>
+
+    <!-- การ์ดสรุป 3 ใบ -->
+    <div class="grid grid-3">
+      <div class="card"><div class="stat"><div class="stat__value" id="stat-unclaimed">0</div><div class="stat__label">รอรับตรวจ · โครงการ</div></div></div>
+      <div class="card"><div class="stat"><div class="stat__value" id="stat-pending">0</div><div class="stat__label">รอตรวจ · โครงการ</div></div></div>
+      <div class="card"><div class="stat"><div class="stat__value" id="stat-done">0</div><div class="stat__label">ตรวจแล้ว · โครงการ</div></div></div>
+    </div>
+
+    <div class="card card--pad-sm">
+      <div class="card__header"><h2 class="text-subhead">รอรับตรวจ (ยังไม่มีผู้รับผิดชอบ)</h2></div>
+      <div class="grid grid-2" id="unclaimed"></div>
+    </div>
+
+    <div class="card card--pad-sm">
+      <div class="card__header"><h2 class="text-subhead">งานของฉัน</h2></div>
+      <div class="grid grid-2" id="mine"></div>
+    </div>
+
+  </div>
+</main>
+
+<!-- PROTOTYPE ONLY: รีเซ็ตเพื่อทดสอบระบบซ้ำ -->
+<button type="button" class="reset-fab" id="reset-fab" title="รีเซ็ตเพื่อทดสอบใหม่ (ผลตรวจ / ข้อคิดเห็น / การรับตรวจ / การเปลี่ยนผู้รับผิดชอบ)" aria-label="รีเซ็ตเพื่อทดสอบใหม่">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+</button>
+
+<script src="db-client.js"></script>
+<script src="shared.js"></script>
+<script>
+  RGMS.renderAppNav("finance-review-queue");
+  var me = RGMS.currentRole().name;
+
+  var inPhase = RGMS.PROJECTS.filter(function (p) { return RGMS.inReviewPhase(p.status); });
+  var unclaimed = inPhase.filter(function (p) { return !RGMS.financeOwnerOf(p.id); });
+  var mine = inPhase.filter(function (p) { return RGMS.financeOwnerOf(p.id) === me; });
+
+  /* ตรวจแล้ว = สถานะแทร็กการเงินไม่ใช่ "pending" (ถูกตั้งเมื่อกด "บันทึกผลตรวจการเงิน" ในหน้า finance-review-console) */
+  function isChecked(p) { return RGMS.financeTrackStatus(p.id) !== "pending"; }
+
+  function statusBadgeHTML(kind) {   // kind: "unclaimed" | "wait" | "done"
+    if (kind === "done") return '<span class="badge badge-ok status-badge status-badge--done">ตรวจแล้ว</span>';
+    return '<span class="badge badge-wait status-badge status-badge--wait">' + (kind === "unclaimed" ? 'รอรับตรวจ' : 'รอตรวจ') + '</span>';
+  }
+
+  /* ประเภททุนของโครงการ (ชื่อเต็ม) */
+  function tierLabel(p) { return (p.tier && RGMS.TIERS[p.tier]) ? RGMS.TIERS[p.tier].label : ""; }
+
+  /* แทร็กเนื้อหา: รอประเมิน (เหลือง กระพริบ) / ประเมินแล้ว (เขียว กระพริบ) / มีข้อคิดเห็น */
+  function contentBadgeHTML(st) {
+    if (st === "pending") return '<span class="badge badge-wait status-badge status-badge--wait">รอประเมิน</span>';
+    if (st === "cleared") return '<span class="badge badge-ok status-badge status-badge--done">ประเมินแล้ว</span>';
+    return RGMS.trackBadgeHTML(st);
+  }
+
+  function card(p, opts) {
+    var cont = RGMS.contentTrackStatus(p.id);
+    return '<div class="card stack gap-3">' +
+      '<div class="between"><span class="text-mono text-muted">' + p.id + '</span>' + statusBadgeHTML(opts.kind) + '</div>' +
+      '<div style="font-weight:600; font-size:16px; line-height:1.4;">' + p.title + '</div>' +
+      '<div class="text-sm text-muted">' + p.school + (tierLabel(p) ? ' · ' + tierLabel(p) : '') + ' · งบที่ขอ ' + RGMS.fmtBaht(p.budgetReq) + '</div>' +
+      '<div class="cluster gap-2 text-sm"><span class="text-muted">แทร็กเนื้อหา:</span>' + contentBadgeHTML(cont) + '</div>' +
+      (opts.owner ? '<div class="between text-sm"><span class="text-muted">ผู้รับผิดชอบ: <b>' + opts.owner + '</b></span>' +
+        '<button class="btn btn-ghost btn-sm" data-reassign="' + p.id + '" title="เปลี่ยนผู้รับผิดชอบแทร็กการเงิน">เปลี่ยน ✎</button></div>' : '') +
+      opts.action +
+    '</div>';
+  }
+  function openReassign(pid) {
+    var p = RGMS.getProject(pid); var cur = RGMS.financeOwnerOf(pid);
+    function badge(n) { return n <= 3 ? "badge-ok" : n <= 6 ? "badge-wait" : "badge-reject"; }
+    var cards = RGMS.FINANCE_REVIEWERS.map(function (name) {
+      var load = RGMS.financeLoad(name), checked = name === cur;
+      return '<label style="display:flex; gap:12px; align-items:center; padding:12px; border:1px solid ' + (checked ? "var(--color-primary)" : "var(--color-border)") + '; border-radius:var(--radius-sm); cursor:pointer; background:var(--color-surface);">' +
+        '<input type="radio" name="finance-owner" value="' + name + '"' + (checked ? " checked" : "") + ' style="width:18px; height:18px; accent-color:var(--color-primary); flex-shrink:0;">' +
+        '<div class="flex-1" style="min-width:0;"><div style="font-weight:600;">' + name + (checked ? ' <span class="text-sm text-muted">(ปัจจุบัน)</span>' : "") + '</div></div>' +
+        '<span class="badge ' + badge(load) + '">ถือ ' + load + '</span></label>';
+    }).join("");
+    RGMS.modal({
+      title: "เปลี่ยนผู้รับผิดชอบแทร็กการเงิน",
+      body: '<div class="notice notice--info" style="margin-bottom:12px;"><span class="notice__body"><b>' + p.id + '</b> · ' + p.title + '<br>ผู้รับผิดชอบปัจจุบัน: <b>' + cur + '</b> — จนท.การเงินแลกกันเองได้ ผู้ที่รับต่อจะดูแลแทร็กนี้ต่อเนื่องทุกรอบแทน</span></div>' +
+        '<div class="stack gap-2">' + cards + '</div>',
+      foot: '<button class="btn btn-secondary btn-md" data-close>ยกเลิก</button><button class="btn btn-primary btn-md" id="save-finance-owner">บันทึกการมอบหมาย</button>',
+      onMount: function (back, close) {
+        back.querySelector("#save-finance-owner").addEventListener("click", function () {
+          var sel = back.querySelector('input[name="finance-owner"]:checked'); if (!sel) return;
+          var name = sel.value; close();
+          if (name !== cur) { RGMS.setFinanceOwner(pid, name); RGMS.toast("เปลี่ยนผู้รับผิดชอบแทร็กการเงิน " + pid + ": " + cur + " → " + name, "accent"); }
+          render();
+        });
+      }
+    });
+  }
+
+  function render() {
+    inPhase = RGMS.PROJECTS.filter(function (p) { return RGMS.inReviewPhase(p.status); });
+    unclaimed = inPhase.filter(function (p) { return !RGMS.financeOwnerOf(p.id); });
+    mine = inPhase.filter(function (p) { return RGMS.financeOwnerOf(p.id) === me; });
+
+    // เรียงงานของฉัน: ยังไม่ตรวจขึ้นก่อน (ซ้าย→ขวา) ตรวจแล้วถอยไปท้าย — ลำดับเดิมในกลุ่มเดียวกันคงไว้
+    mine = mine
+      .map(function (p, i) { return { p: p, i: i, done: isChecked(p) }; })
+      .sort(function (a, b) { return (a.done - b.done) || (a.i - b.i); })
+      .map(function (x) { return x.p; });
+
+    var doneCount = mine.filter(isChecked).length;
+    document.getElementById("stat-unclaimed").textContent = unclaimed.length;
+    document.getElementById("stat-pending").textContent   = mine.length - doneCount;
+    document.getElementById("stat-done").textContent      = doneCount;
+
+    document.getElementById("unclaimed").innerHTML = unclaimed.length ? unclaimed.map(function (p) {
+      return card(p, { kind: "unclaimed", action: '<button class="btn btn-primary btn-md btn-block" data-claim="' + p.id + '">รับตรวจ →</button>' });
+    }).join("") : '<p class="text-sm text-muted">ไม่มีโครงการรอรับตรวจในขณะนี้</p>';
+
+    document.getElementById("mine").innerHTML = mine.length ? mine.map(function (p) {
+      var done = isChecked(p);
+      return card(p, { kind: done ? "done" : "wait", owner: me, action: '<a class="btn ' + (done ? 'btn-secondary' : 'btn-primary') + ' btn-md btn-block" href="finance-review-console.html?id=' + p.id + '">' + (done ? 'ตรวจสอบผลตรวจ' : 'เริ่มตรวจการเงิน →') + '</a>' });
+    }).join("") : '<p class="text-sm text-muted">คุณยังไม่ได้รับตรวจโครงการใด</p>';
+
+    document.querySelectorAll("[data-claim]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-claim");
+        RGMS.claimFinance(id, me);
+        render();   // ย้ายการ์ดไป "งานของฉัน" เท่านั้น — ไม่เด้งเข้าหน้าตรวจ ต้องกด "เริ่มตรวจการเงิน →" เอง
+        RGMS.toast("รับตรวจ " + id + " แล้ว — อยู่ในการ์ด \"งานของฉัน\"", "accent");
+      });
+    });
+    document.querySelectorAll("[data-reassign]").forEach(function (btn) {
+      btn.addEventListener("click", function () { openReassign(btn.getAttribute("data-reassign")); });
+    });
+
+    RGMS.refreshNavCounts();   // อัปเดตเลขใน sidebar ให้ตรงกับงานค้าง (รอรับตรวจ + รอตรวจของฉัน)
+  }
+  render();
+
+  // PROTOTYPE ONLY: รีเซ็ตผลตรวจ + ข้อคิดเห็น + การรับตรวจ → ทดสอบระบบซ้ำ
+  document.getElementById("reset-fab").addEventListener("click", function () {
+    var b = this; b.classList.add("is-spinning");
+    RGMS.resetFinanceReview();
+    render();
+    setTimeout(function () { b.classList.remove("is-spinning"); }, 600);
+  });
+
+  // กลับมาจากหน้า finance-review-console (ปุ่ม Back / bfcache) หรือสถานะเปลี่ยนจากแท็บอื่น → วาดใหม่
+  window.addEventListener("pageshow", function (e) { if (e.persisted) render(); });
+  window.addEventListener("focus", render);
+  window.addEventListener("storage", render);
+</script>
+</body>
+</html>

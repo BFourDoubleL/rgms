@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>กล่องงาน · ตรวจเอกสาร — RGMS ทุนวิจัย มฟล.</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="staff.css">
+</head>
+<body>
+<div id="app-nav-root"></div>
+<main class="section">
+  <div class="container stack gap-5">
+
+    <div class="page-head s-enter">
+      <span class="text-overline">เจ้าหน้าที่ส่วนบริหารงานวิจัย · ผู้รับผิดชอบ</span>
+      <h1 class="text-headline">กล่องงาน · ตรวจเอกสารและกลั่นกรอง</h1>
+      <p class="text-muted">ทุกโครงการที่รอการดำเนินการของเจ้าหน้าที่ พร้อมผลตรวจความครบถ้วนอัตโนมัติ — กดการ์ดสรุปหรือแถบสถานะเพื่อกรองรายการ</p>
+    </div>
+
+    <div class="between wrap s-enter" style="gap:12px; animation-delay:.04s;">
+      <div class="stack gap-1">
+        <span class="text-overline">ปีงบประมาณ</span>
+        <div class="chip-group" id="year"></div>
+      </div>
+      <label class="cluster gap-2 text-sm" style="cursor:pointer;">
+        <input type="checkbox" id="cross" style="width:18px;height:18px;accent-color:var(--color-primary);">
+        แสดงงานค้างข้ามปี (ต้องดำเนินการทั้งหมด)
+      </label>
+    </div>
+
+    <div class="kpi-grid" id="kpis" aria-label="สรุปโครงการ กดการ์ดเพื่อกรองรายการด้านล่าง กดซ้ำเพื่อยกเลิก"></div>
+
+    <div class="card card--pad-sm s-enter" style="animation-delay:.12s;">
+      <div class="stack gap-2">
+        <div class="between wrap"><span class="text-overline">สัดส่วนตามสถานะ</span><span class="text-sm text-muted" id="pipe-total"></span></div>
+        <div class="pipe" id="pipe" role="group" aria-label="สัดส่วนโครงการตามสถานะ"></div>
+        <div class="pipe-legend" id="pipe-legend"></div>
+      </div>
+    </div>
+
+    <div class="card card--featured card--pad-sm s-enter" style="animation-delay:.16s;">
+      <div class="stack gap-3">
+        <div class="between wrap gap-3">
+          <div class="chip-group" id="filters"></div>
+          <input class="field__control" id="search" placeholder="ค้นหา รหัส / ชื่อโครงการ / หัวหน้าโครงการ / สำนักวิชา" style="max-width:380px;">
+        </div>
+        <span class="text-sm text-muted num" id="count"></span>
+      </div>
+      <div class="table-wrap" style="margin-top:12px;">
+        <table class="table">
+          <thead><tr>
+            <th>รหัส</th><th>ชื่อโครงการ / ผู้วิจัย</th><th>สำนักวิชา</th><th>ประเภททุน</th>
+            <th class="right">งบที่ขอ</th><th>เอกสาร</th><th>สถานะ</th><th></th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<button type="button" class="fab-reset" id="fab-reset" aria-label="รีเซ็ตตัวกรอง กลับจุดเดิม" title="รีเซ็ต / กลับจุดเดิม">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+</button>
+
+
+<script src="db-client.js"></script>
+<script src="shared.js"></script>
+<script src="staff-nav.js"></script>
+<script>
+  RGMS.renderAppNav("staff-queue");
+  StaffNav.mount("staff-queue");
+  // งานของ จนท. = ทุกสถานะที่อยู่ในขอบเขต MVP เฟส 1 (ยื่น → เอนดอร์ส/ตรวจ → พิจารณา → มติ)
+  var WORK = ["submitted","screening","review","committee","revise","approved"];
+  var base = RGMS.PROJECTS.filter(function (p) { return WORK.indexOf(p.status) >= 0; });
+
+  var years = RGMS.fiscalYears().filter(function (y) { return base.some(function (p) { return RGMS.fyOf(p) === y; }); });
+  var fy = RGMS.CURRENT_FY;                 // ค่าตั้งต้น = ปีงบปัจจุบัน
+  if (years.indexOf(fy) < 0) fy = years[0];
+  var cross = false;                        // แสดงงานค้างข้ามปี (ไม่กรองปี)
+  var active = "all";
+  var q = "";                               // คำค้นหา (FR-69)
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var firstPaint = true;
+
+  // กลุ่มสถานะที่ใช้กรอง (นอกเหนือจากสถานะเดี่ยว)
+  var GROUPS = {
+    todo:     ["submitted","screening","revise"],
+    staff:    ["submitted","screening"],
+    inreview: ["review","committee"]
+  };
+  var STAGE_LABEL = { submitted: "รอตรวจเอกสาร", screening: "รอมอบคณะอนุกรรมการ", review: "กำลังพิจารณา", committee: "รอวาระ/มติ", revise: "รอผู้วิจัยแก้ไข", approved: "อนุมัติ รอประกาศผล" };
+  var STAGE_COLOR = { submitted: "#C59B27", screening: "#D97706", review: "#2563EB", committee: "#7C3AED", revise: "#DC2626", approved: "#0F7B4F" };
+
+  function scoped() { return (cross || fy === "all") ? base.slice() : base.filter(function (p) { return RGMS.fyOf(p) === fy; }); }
+  function searchMatch(p) { if (!q) return true; return (p.id + " " + p.title + " " + p.pi + " " + p.school).toLowerCase().indexOf(q.toLowerCase()) >= 0; }
+  function visible() { return scoped(); }
+
+  function match(p) {
+    if (active === "all") return true;
+    if (GROUPS[active]) return GROUPS[active].indexOf(p.status) >= 0;
+    return p.status === active;
+  }
+
+  function setFilter(id) {
+    active = (id === active && id !== "all") ? "all" : id;   // กดซ้ำ = ล้างตัวกรอง
+    renderFilters(); renderKpis(true); renderPipe(); renderRows();
+  }
+
+  /* ---------- count-up ---------- */
+  function countUp(el, to) {
+    if (reduce || !isFinite(to)) { el.textContent = RGMS.fmtMoney(to); return; }
+    var t0 = null, dur = 650;
+    function step(ts) {
+      if (t0 === null) t0 = ts;
+      var k = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = RGMS.fmtMoney(Math.round(to * e));
+      if (k < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function renderYear() {
+    var opts = [{ v: RGMS.CURRENT_FY, l: "ปีงบ " + RGMS.CURRENT_FY + " (ปัจจุบัน)" }]
+      .concat(years.filter(function (y) { return y !== RGMS.CURRENT_FY; }).map(function (y) { return { v: y, l: "ปีงบ " + y }; }))
+      .concat([{ v: "all", l: "ทุกปีงบ" }]);
+    document.getElementById("year").innerHTML = opts.map(function (o) {
+      var on = String(o.v) === String(fy) && !cross;
+      return '<button class="chip' + (on ? ' is-active' : '') + '"' + (cross ? ' disabled style="opacity:.45;"' : '') + ' data-y="' + o.v + '">' + o.l + '</button>';
+    }).join("");
+  }
+
+  var kpiAnim = true;
+  function renderKpis(noAnim) {
+    var list = visible();
+    var needStaff = list.filter(function (p) { return GROUPS.staff.indexOf(p.status) >= 0; }).length;
+    var inReview = list.filter(function (p) { return GROUPS.inreview.indexOf(p.status) >= 0; }).length;
+    var totalReq = list.reduce(function (s, p) { return s + p.budgetReq; }, 0);
+    var scopeLabel = cross ? 'ข้ามปี' : (fy === "all" ? 'ทุกปี' : 'ปีงบ ' + fy);
+    var items = [
+      { label: 'รอเจ้าหน้าที่ดำเนินการ', val: needStaff, unit: 'โครงการ', accent: true, f: 'staff' },
+      { label: 'อยู่ระหว่างประเมิน/วาระ', val: inReview, unit: 'โครงการ', f: 'inreview' },
+      { label: 'ทั้งหมด · ' + scopeLabel, val: list.length, unit: 'โครงการ', f: 'all' },
+      { label: 'งบที่ขอรวม', val: totalReq, unit: 'บาท' }
+    ];
+    var host = document.getElementById("kpis");
+    host.className = "kpi-grid";
+    host.innerHTML = items.map(function (k, i) {
+      var inner = '<span class="kpi-card__value" data-to="' + k.val + '">' + RGMS.fmtMoney(k.val) + '</span>' +
+        '<span class="kpi-card__label">' + k.label + ' · ' + k.unit + '</span>' +
+        (k.f ? '<span class="kpi-hint">' + (active === k.f && k.f !== "all" ? 'กำลังกรอง · กดเพื่อล้าง' : 'กดเพื่อกรอง') + '</span>' : '');
+      if (!k.f) return '<div class="kpi-card kpi-card--static">' + inner + '</div>';
+      var on = active === k.f;
+      return '<button type="button" class="kpi-card" data-kf="' + k.f + '" aria-pressed="' + on + '">' + inner + '</button>';
+    }).join("");
+    if (!noAnim && kpiAnim) {
+      host.querySelectorAll("[data-to]").forEach(function (el) { countUp(el, Number(el.getAttribute("data-to"))); });
+    }
+  }
+
+  function renderPipe() {
+    var list = visible(), total = list.length;
+    var counts = {}; WORK.forEach(function (s) { counts[s] = 0; });
+    list.forEach(function (p) { counts[p.status]++; });
+    document.getElementById("pipe-total").textContent = total + " โครงการ";
+    var pipe = document.getElementById("pipe");
+    pipe.classList.toggle("has-active", WORK.indexOf(active) >= 0);
+    pipe.innerHTML = WORK.filter(function (s) { return counts[s] > 0; }).map(function (s, i) {
+      return '<button type="button" class="pipe__seg' + (active === s ? ' is-active' : '') + '" data-ps="' + s + '" style="flex:' + counts[s] + ' 1 0; background:' + STAGE_COLOR[s] + '; animation-delay:' + (i * 0.06) + 's;" title="' + STAGE_LABEL[s] + ' ' + counts[s] + '" aria-label="' + STAGE_LABEL[s] + ' ' + counts[s] + ' โครงการ"></button>';
+    }).join("") || '';
+    document.getElementById("pipe-legend").innerHTML = WORK.map(function (s) {
+      return '<button type="button" data-ps="' + s + '" class="' + (active === s ? 'is-active' : '') + '"><i style="background:' + STAGE_COLOR[s] + '"></i>' + STAGE_LABEL[s] + ' <b class="num">' + counts[s] + '</b></button>';
+    }).join("");
+  }
+
+  var filters = [
+    { id: "all", label: "ทั้งหมด" },
+    { id: "todo", label: "ต้องดำเนินการ" },
+    { id: "submitted", label: "รอตรวจเอกสาร" },
+    { id: "screening", label: "รอมอบคณะอนุกรรมการ" },
+    { id: "review", label: "กำลังพิจารณา" },
+    { id: "revise", label: "รอผู้วิจัยแก้ไข" }
+  ];
+  function renderFilters() {
+    document.getElementById("filters").innerHTML = filters.map(function (f) {
+      return '<button class="chip' + (f.id === active ? ' is-active' : '') + '" data-f="' + f.id + '">' + f.label + '</button>';
+    }).join("");
+  }
+
+  function docCell(p) {
+    if (!(p.checklist || []).length) return '<span class="text-sm text-muted">—</span>';
+    var c = RGMS.completeness(p);
+    if (c.allOk) return '<span class="badge badge-ok">ครบ ' + c.pass + '/' + c.total + '</span>';
+    return '<span class="badge badge-reject">ขาด ' + (c.total - c.pass) + '/' + c.total + '</span>';
+  }
+  function tierCell(p) { var t = RGMS.tierOf(p); return '<span class="tag">' + t.short + '</span>'; }
+  function actionCell(p) {
+    var map = {
+      submitted: RGMS.completeness(p).allOk ? ['รับเรื่อง','btn-ok'] : ['ตรวจ/ส่งคืน','btn-primary-solid'],
+      screening: ['มอบคณะอนุกรรมการ','btn-primary'],
+      review: ['ติดตาม','btn-secondary'],
+      committee: ['มติ/ประกาศ','btn-primary'],
+      revise: ['ติดตามการแก้','btn-secondary'],
+      approved: ['ประกาศผล','btn-primary']
+    };
+    var a = map[p.status] || ['เปิด','btn-ghost'];
+    var href = (["committee","approved"].indexOf(p.status) >= 0) ? "staff-agenda.html" : "project-detail.html?id=" + p.id;
+    return '<a class="btn ' + a[1] + ' btn-sm" href="' + href + '">' + a[0] + '</a>';
+  }
+
+  function renderRows() {
+    var list = visible().filter(match).filter(searchMatch).sort(function (a, b) { return b.id < a.id ? -1 : 1; });
+    document.getElementById("count").textContent = list.length + " รายการ" + (q ? ' · ค้นหา "' + q + '"' : "");
+    document.getElementById("rows").innerHTML = list.length ? list.map(function (p, i) {
+      return '<tr class="is-clickable s-row" style="animation-delay:' + Math.min(i, 12) * 0.03 + 's;" data-id="' + p.id + '">' +
+        '<td class="num">' + p.id + '</td>' +
+        '<td><div style="font-weight:600;">' + p.title + '</div><div class="text-sm text-muted">' + p.pi + '</div></td>' +
+        '<td class="text-sm">' + p.school + '</td>' +
+        '<td>' + tierCell(p) + '</td>' +
+        '<td class="right num">' + RGMS.fmtMoney(p.budgetReq) + '</td>' +
+        '<td>' + docCell(p) + '</td>' +
+        '<td>' + RGMS.badgeHTML(RGMS.effectiveStatus(p)) + '</td>' +
+        '<td class="right">' + actionCell(p) + '</td>' +
+      '</tr>';
+    }).join("") : '<tr><td colspan="8" class="text-center text-muted" style="padding:24px;">ไม่พบรายการที่ตรงกับตัวกรอง/คำค้นหา</td></tr>';
+  }
+
+  function refresh() { renderYear(); renderKpis(); renderPipe(); renderRows(); }
+
+  document.getElementById("year").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-y]"); if (!b || cross) return;
+    var y = b.getAttribute("data-y"); fy = (y === "all") ? "all" : parseInt(y, 10);
+    refresh();
+  });
+  document.getElementById("cross").addEventListener("change", function (e) {
+    cross = e.target.checked; refresh();
+  });
+  document.getElementById("search").addEventListener("input", function (e) {
+    q = e.target.value.trim(); renderRows();
+  });
+  document.getElementById("filters").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-f]"); if (!b) return;
+    active = b.getAttribute("data-f"); renderFilters(); renderKpis(true); renderPipe(); renderRows();
+  });
+  document.getElementById("kpis").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-kf]"); if (b) setFilter(b.getAttribute("data-kf"));
+  });
+  function onPipe(e) { var b = e.target.closest("[data-ps]"); if (b) setFilter(b.getAttribute("data-ps")); }
+  document.getElementById("pipe").addEventListener("click", onPipe);
+  document.getElementById("pipe-legend").addEventListener("click", onPipe);
+  document.getElementById("rows").addEventListener("click", function (e) {
+    if (e.target.closest("a")) return;
+    var tr = e.target.closest("[data-id]");
+    if (tr) window.location.href = "project-detail.html?id=" + tr.getAttribute("data-id");
+  });
+
+  renderFilters();
+  refresh();
+
+  /* ปุ่มรีเซ็ตมุมขวาล่าง (เหมือนหน้าเลขา) */
+  (function () {
+    var fab = document.getElementById("fab-reset");
+    fab.addEventListener("click", function () {
+      fab.classList.remove("spin"); void fab.offsetWidth; fab.classList.add("spin");
+      fy = RGMS.CURRENT_FY; cross = false; active = "all"; q = "";
+      document.getElementById("search").value = "";
+      document.getElementById("cross").checked = false;
+      renderFilters(); refresh();
+      window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+    });
+  })();
+</script>
+</body>
+</html>

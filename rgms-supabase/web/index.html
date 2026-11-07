@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RGMS · ระบบบริหารจัดการทุนวิจัย มฟล.</title>
+<meta name="description" content="ระบบบริหารจัดการทุนวิจัย มหาวิทยาลัยแม่ฟ้าหลวง เลือกบทบาทเพื่อเข้าใช้งานตามขั้นตอนการพิจารณาทุน">
+<meta name="theme-color" content="#851419">
+<meta property="og:title" content="RGMS · ระบบบริหารจัดการทุนวิจัย มฟล.">
+<meta property="og:description" content="ยื่นข้อเสนอ ตรวจเอกสาร พิจารณาสองแทร็ก และประกาศผลทุนวิจัยในระบบเดียว">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23851419'/%3E%3Ctext x='16' y='21' font-size='13' font-weight='700' text-anchor='middle' fill='%23fff' font-family='sans-serif'%3EMFU%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="index.css">
+</head>
+<body class="ix-body">
+<a class="ix-skip" href="#role-grid">ข้ามไปเลือกบทบาท</a>
+
+<header class="ix-hero">
+  <div class="ix-wrap">
+    <div class="ix-brand">
+      <span class="ix-mark" aria-hidden="true">MFU</span>
+      <div>
+        <div class="ix-brand__name">มหาวิทยาลัยแม่ฟ้าหลวง</div>
+        <div class="ix-brand__sub">Mae Fah Luang University</div>
+      </div>
+    </div>
+    <span class="ix-overline">RESEARCH GRANT MANAGEMENT SYSTEM · MVP PHASE 1</span>
+    <h1 class="ix-title">ระบบบริหารจัดการ<em>ทุนวิจัย</em><br>มหาวิทยาลัยแม่ฟ้าหลวง</h1>
+    <p class="ix-lead">ตั้งแต่ยื่นข้อเสนอ รับรอง ตรวจเอกสาร พิจารณาสองแทร็ก จนถึงประกาศผล — ครบในที่เดียว เลือกบทบาทของคุณเพื่อเริ่มต้นใช้งาน</p>
+  </div>
+</header>
+
+<main>
+  <div class="ix-wrap ix-flow-wrap">
+    <ol class="ix-flow" aria-label="ขั้นตอนการพิจารณาทุน" id="ix-flow">
+      <li class="ix-step" data-stage="1"><span class="ix-step__n">1</span><span class="ix-step__t">ยื่นข้อเสนอออนไลน์</span></li>
+      <li class="ix-step" data-stage="2"><span class="ix-step__n">2</span><span class="ix-step__t">รับรองระดับสำนักวิชา</span></li>
+      <li class="ix-step" data-stage="3"><span class="ix-step__n">3</span><span class="ix-step__t">ตรวจเอกสารส่วนกลาง</span></li>
+      <li class="ix-step" data-stage="4"><span class="ix-step__n">4</span><span class="ix-step__t">พิจารณาคู่ขนาน 2 แทร็ก</span></li>
+      <li class="ix-step" data-stage="5"><span class="ix-step__n">5</span><span class="ix-step__t">มติ คกก. &amp; ประกาศผล</span></li>
+    </ol>
+  </div>
+
+  <section class="ix-section">
+    <div class="ix-wrap">
+      <div class="ix-head">
+        <div>
+          <h2>เลือกบทบาทเพื่อเข้าใช้งาน</h2>
+          <p>ต้นแบบนี้ใช้สลับบทบาทเพื่อสาธิต ไม่ต้องล็อกอินจริง</p>
+        </div>
+        <span class="ix-hint">เลื่อนเมาส์ที่การ์ดเพื่อดูขั้นตอนที่เกี่ยวข้อง</span>
+      </div>
+      <div class="ix-grid" id="role-grid"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="ix-foot">RGMS Prototype · ข้อมูลทั้งหมดเป็นข้อมูลสมมติเพื่อการสาธิต</footer>
+
+<script src="db-client.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  var I = {
+    researcher: '<path d="M4 19.5V6a2 2 0 0 1 2-2h9l5 5v10.5a.5.5 0 0 1-.5.5h-15a.5.5 0 0 1-.5-.5Z"/><path d="M14 4v5h5M8 13h8M8 17h5"/>',
+    chair: '<path d="M12 3 3 8v2h18V8l-9-5Z"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>',
+    secretary: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M8 14h3"/>',
+    staff: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 9 1.5 1.5L12 8M8 15l1.5 1.5L12 14M14 9.5h3M14 15.5h3"/>',
+    reviewer: '<path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8 9h8M8 12h5"/>',
+    finance: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6.5 9.5v.01M17.5 14.5v.01"/>',
+    exec: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'
+  };
+  var meta = {
+    researcher: { stage: 1, desc: "ยื่นข้อเสนอออนไลน์ ติดตามสถานะ ส่งรายงานความก้าวหน้า/ฉบับสมบูรณ์ และเอกสารการเงิน" },
+    chair:      { stage: 2, desc: "พิจารณารับรองข้อเสนอของสำนักวิชาก่อนส่งส่วนบริหารงานวิจัย (รับรอง / ส่งกลับแก้ไข)" },
+    secretary:  { stage: 2, desc: "ติดตามเอกสาร ข้อคอมเมนต์ และสถานะโครงการของนักวิจัยในสำนักวิชาตนเอง" },
+    staff:      { stage: 3, desc: "ตรวจความครบถ้วนอัตโนมัติ กล่องงานรวม เปิดรอบทุน ติดตามการแก้ไข และเตรียมประกาศผล" },
+    reviewer:   { stage: 4, desc: "ให้ข้อคิดเห็น/ข้อเสนอแนะ และรับรองเนื้อหาข้อเสนอโครงการ (ไม่ใช้การให้คะแนน)" },
+    finance:    { stage: 4, desc: "รับตรวจโครงการแบบ Claim-based เป็นผู้รับผิดชอบต่อเนื่องทุกรอบ ตรวจงบตาราง 17.2" },
+    exec:       { stage: 5, desc: "ดูโครงการที่ผ่านทั้ง 2 แทร็ก บันทึกมติคณะกรรมการ และประกาศผลการพิจารณา" }
+  };
+  var order = ["researcher", "chair", "secretary", "staff", "reviewer", "finance", "exec"];
+  var grid = document.getElementById("role-grid");
+  var flow = document.getElementById("ix-flow");
+  var arrow = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+
+  grid.innerHTML = order.map(function (id, i) {
+    var role = RGMS.ROLES[id], m = meta[id];
+    return '<button type="button" class="ix-card" style="--i:' + i + '" data-role="' + id + '" data-stage="' + m.stage + '">' +
+      '<div class="ix-card__top">' +
+        '<span class="ix-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + I[id] + '</svg></span>' +
+        '<span class="ix-stage">ขั้นที่ ' + m.stage + '</span>' +
+      '</div>' +
+      '<h3>' + role.label + '</h3>' +
+      '<p>' + m.desc + '</p>' +
+      '<span class="ix-go">เข้าใช้งาน' + arrow + '</span>' +
+    '</button>';
+  }).join("");
+
+  function hot(stage) {
+    Array.prototype.forEach.call(flow.children, function (s) {
+      s.classList.toggle("is-hot", String(stage) === s.getAttribute("data-stage"));
+    });
+  }
+  grid.addEventListener("mouseover", function (e) { var c = e.target.closest("[data-stage]"); if (c) hot(c.getAttribute("data-stage")); });
+  grid.addEventListener("focusin", function (e) { var c = e.target.closest("[data-stage]"); if (c) hot(c.getAttribute("data-stage")); });
+  grid.addEventListener("mouseleave", function () { hot(0); });
+  grid.addEventListener("focusout", function () { hot(0); });
+
+  grid.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-role]");
+    if (!btn) return;
+    var id = btn.getAttribute("data-role");
+    RGMS.setRole(id);
+    window.location.href = RGMS.ROLES[id].home;
+  });
+})();
+</script>
+</body>
+</html>
